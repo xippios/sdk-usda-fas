@@ -43,6 +43,9 @@ decided the package's scope and the gateway's leaving on 2026-11-24.
      reads `x-ratelimit-limit` and `x-ratelimit-remaining`, counts a rolling hour, and keeps
      the wait of a 429 from its `Retry-After`, else one hour (sdk-core ADR-0033, decision 3).
      Separate processes keep a snapshot each.
+   - `Gateway` takes no key of its own: a key passed to a source's client still draws on
+     `Gateway.policy`'s snapshot, and a caller with a key of its own, a separate quota, builds
+     its own core key class and `QuotaPolicy`.
    - FAS's answer for a market year that a data path holds no data for, HTTP 404 with an empty
      `text/plain` body, is `NoDataForYear`, a `NotFoundError` with the request's path, given by
      the `Gateway` that the package exports to a source that names its data paths,
@@ -65,15 +68,17 @@ decided the package's scope and the gateway's leaving on 2026-11-24.
    (https://github.com/xippios/sdk-usda-fas/issues/9) and its refusal of a document without an
    `info` object (https://github.com/xippios/sdk-usda-fas/issues/10) stand as those rows
    record them.
-5. **What does not enter in 0.1.0.** `naive_time` stays sdk-usda-esr's, its one consumer
-   (https://github.com/xippios/sdk-core/issues/473), and moves here in the release in which
-   sdk-usda-gats reads a `since`.
+5. **What does not enter in 0.1.0.** `naive_time` stays sdk-usda-esr's: it has one consumer,
+   and part 4 of the answer on https://github.com/xippios/sdk-core/issues/473 returned it to that
+   source. By decision 1 of this record, a fact of the publisher enters the package once two of
+   its sources share it.
 6. **How a source depends on it.** By `xippios-usda-fas~=0.1.0`, one minor, as sdk-core's
    ADR-0021, decision 1, bounds a dependency, with the package's public names in the place of
    a task layer (sdk-core ADR-0065, decision 3). The package and its sources share one core
    minor, and the package releases on it first. The three sources adopt a breaking minor of
    the package together, since the host installs them with `>=` lower bounds (sdk-core
-   ADR-0021, decision 4), so that the latest of the three install beside one minor of it.
+   ADR-0021, amendment 2026-10-29, point 4), so that the latest of the three install beside one
+   minor of it.
 
 ## Consequences
 
