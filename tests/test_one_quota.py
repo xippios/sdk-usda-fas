@@ -8,6 +8,7 @@ behind both by its identity and by what it does: what one client observes, the o
 request sees, and a quota spent through one is refused through the other without sending.
 """
 
+import re
 from collections.abc import Callable
 
 import httpx
@@ -18,6 +19,10 @@ from xippios.core.testing import CLOCK_SLACK
 from xippios.usda.fas import Gateway, data_gov
 
 BASE = "https://api.fas.usda.gov"
+ESR_DATA = re.compile(
+    r"/api/esr/exports/commodityCode/[^/]+/(?:allCountries|countryCode/[^/]+)/marketYear/[^/]+"
+)
+"""sdk-usda-esr's data paths, as its _client.py writes them."""
 OVER_RATE_LIMIT = {"error": {"code": "OVER_RATE_LIMIT", "message": "You have exceeded your rate"}}
 
 
@@ -52,9 +57,26 @@ def source_client(
     return AsyncClient(config, auth=gateway.auth, transport=httpx.MockTransport(upstream))
 
 
+BUILT_AS: dict[str, tuple[Callable[[], data_gov.Gateway], Callable[[], data_gov.Gateway]]] = {
+    # As the three sources build it: the gateway the package exports, with FAS's answer.
+    "the exported gateway": (
+        lambda: Gateway("usda-esr", data_path=ESR_DATA),
+        lambda: Gateway("usda-gats"),
+    ),
+    # The gateway's own module, which holds nothing of FAS, beside the exported one.
+    "the gateway's module beside it": (
+        lambda: data_gov.Gateway("usda-esr"),
+        lambda: Gateway("usda-gats"),
+    ),
+}
+
+
 @pytest.mark.anyio
 @pytest.mark.rate_limited
-async def test_two_clients_on_the_gateway_in_one_process_hold_one_quota_policy() -> None:
+@pytest.mark.parametrize("built_as", sorted(BUILT_AS))
+async def test_two_clients_on_the_gateway_in_one_process_hold_one_quota_policy(
+    built_as: str,
+) -> None:
     first_upstream = Upstream(
         (200, [], {"x-ratelimit-limit": "1000", "x-ratelimit-remaining": "998"}),
         (429, OVER_RATE_LIMIT, {"retry-after": "3151", "x-ratelimit-remaining": "0"}),
@@ -62,7 +84,8 @@ async def test_two_clients_on_the_gateway_in_one_process_hold_one_quota_policy()
     second_upstream = Upstream(
         (200, [], {"x-ratelimit-limit": "1000", "x-ratelimit-remaining": "999"}),
     )
-    first_gateway, second_gateway = Gateway("usda-esr"), Gateway("usda-gats")
+    build_first, build_second = BUILT_AS[built_as]
+    first_gateway, second_gateway = build_first(), build_second()
     first = source_client("usda-esr", first_gateway, first_upstream)
     second = source_client("usda-gats", second_gateway, second_upstream)
 
