@@ -1,3 +1,18 @@
 {
-  "records": []
+  "records": [
+    {
+      "id": "ADR-0001",
+      "number": 1,
+      "title": "What the package holds, and the api.data.gov gateway that left xippios-core",
+      "path": "docs/adr/0001-what-the-package-holds-and-the-api-data-gov-gateway.md",
+      "status": "Accepted",
+      "date": "2026-11-26",
+      "decided_by": "https://github.com/xippios/sdk-core/issues/485",
+      "amended": [],
+      "amends": [],
+      "supersedes": [],
+      "other": [],
+      "superseded_by": null
+    }
+  ]
 }

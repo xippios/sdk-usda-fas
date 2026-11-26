@@ -1,6 +1,41 @@
 # xippios-usda-fas
 
-Shared code of the USDA FAS sources, a package of the [xippios SDK family](https://github.com/xippios).
+Shared code of the USDA FAS sources, a package of the [xippios SDK family](https://github.com/xippios):
+the code that the family's sources of USDA's Foreign Agricultural Service share,
+`xippios-usda-psd`, `xippios-usda-esr` and `xippios-usda-gats`, which reach FAS's APIs through
+the api.data.gov gateway. It registers no task, runs no server, wraps no API of its own and keeps
+no upstream snapshot or fixture, and it depends on `xippios-core` alone. Its first record,
+[ADR-0001](https://github.com/xippios/sdk-usda-fas/blob/main/docs/adr/0001-what-the-package-holds-and-the-api-data-gov-gateway.md),
+says what it holds and never holds.
+
+## What it holds
+
+- **The api.data.gov gateway**, `xippios.usda.fas.data_gov`: the key in `DATA_GOV_API_KEY`,
+  sent in the `X-Api-Key` header, the gateway's documented answers as `xippios-core` errors that
+  name the request sent, and one quota policy per process for the key, so that every source on
+  the key spends one quota. The module holds nothing of FAS: a publisher's own answers come in
+  through its `answers` hook.
+- **FAS's answer for a year without data**, `xippios.usda.fas.no_data`: `NoDataForYear`, for
+  FAS's empty `text/plain` 404 on a source's data path, and the `Gateway` that the package
+  exports, the gateway with that answer.
+- **The kit of the FAS Open Data Services portal**, `xippios.usda.fas.portal`, with which each
+  source's `scripts/refresh_upstream.py` declares its documentation snapshot on core's frame:
+  `Portal(prefix)` for the source's service and `shell_text` for a shell page of its own.
+
+A source imports the gateway's names from the package and the kit from its module:
+
+```python
+from xippios.usda.fas import API_KEY_ENV, Gateway, NoDataForYear, REMAINING_HEADER
+
+gateway = Gateway(SOURCE, data_path=DATA_PATH)  # in _client.py, the source's own data paths
+
+from xippios.usda.fas.portal import Portal  # in scripts/refresh_upstream.py alone
+
+PORTAL = Portal("/api/esr/")
+```
+
+Importing the package loads none of core's script frames. A source depends on it by
+`xippios-usda-fas~=0.1.0`, one minor.
 
 ## Install
 
@@ -55,6 +90,7 @@ over the organization's, switches it off.
 - sdk-core: [docs/adr.md](https://github.com/xippios/sdk-core/blob/main/docs/adr.md) — the index of the family's architecture decisions, which the conventions cite.
 - sdk-core: [docs/definition-of-done.md](https://github.com/xippios/sdk-core/blob/main/docs/definition-of-done.md) — what a change satisfies before its pull request is opened.
 - sdk-core: [docs/review-checklist.md](https://github.com/xippios/sdk-core/blob/main/docs/review-checklist.md) — what the review of a pull request checks, in order.
+- sdk-core: [docs/adr/0065-core-names-no-publisher.md](https://github.com/xippios/sdk-core/blob/main/docs/adr/0065-core-names-no-publisher.md) — the gateway's leaving of xippios-core, and the sections of the conventions that bind a publisher's shared package.
 - sdk-usda-fas: [docs/adr.md](https://github.com/xippios/sdk-usda-fas/blob/main/docs/adr.md) — the index of this package's own decisions, generated from the records in `docs/adr/`.
 
 ## Licence
