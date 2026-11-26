@@ -5,7 +5,7 @@ serves them all, and one hourly quota counts every request made with it (sdk-cor
 ``Gateway`` holds what every source behind it shares, once, and nothing of the agency behind
 it: a publisher's own answers come in through the hook ``answers``::
 
-    from xippios.usda.fas import Gateway
+    from xippios.usda.fas.data_gov import Gateway
 
     gateway = Gateway("usda-psd")
 
@@ -19,6 +19,9 @@ it: a publisher's own answers come in through the hook ``answers``::
 
     config = gateway.install(ClientConfig(..., classify=classify))
     client = AsyncClient(config, auth=gateway.auth)
+
+The FAS sources build the package's exported ``Gateway`` in its place, this gateway with FAS's
+answer for a year without data as its ``answers`` (``no_data``).
 
 What the gateway sends, as a source behind it recorded it on 2026-10-23 (sdk-usda-psd's
 ``tests/fixtures/PSDData_GetCommodities/``):

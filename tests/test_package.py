@@ -1,4 +1,6 @@
 import ast
+import subprocess
+import sys
 from functools import cache
 from importlib.metadata import version
 from importlib.util import find_spec
@@ -7,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import xippios.usda.fas
-from xippios.usda.fas import data_gov
+from xippios.usda.fas import data_gov, no_data, portal
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE_PUBLIC = (
@@ -30,19 +32,46 @@ def test_the_package_imports_with_its_distributions_version() -> None:
 
 
 def test_the_package_exports_the_gateway_s_names_from_itself() -> None:
-    # A source imports them in one line of its _client.py,
-    # ``from xippios.usda.fas import API_KEY_ENV, Gateway``.
-    from xippios.usda.fas import API_KEY_ENV, REMAINING_HEADER, Gateway
+    # A source imports them in one line of its _client.py and its tasks.py,
+    # ``from xippios.usda.fas import API_KEY_ENV, Gateway`` and ``NoDataForYear``.
+    from xippios.usda.fas import API_KEY_ENV, REMAINING_HEADER, Gateway, NoDataForYear
 
     assert sorted(xippios.usda.fas.__all__) == [
         "API_KEY_ENV",
         "Gateway",
+        "NoDataForYear",
         "REMAINING_HEADER",
         "__version__",
     ]
     assert API_KEY_ENV is data_gov.API_KEY_ENV
     assert REMAINING_HEADER is data_gov.REMAINING_HEADER
-    assert Gateway is data_gov.Gateway
+    assert Gateway is no_data.Gateway, "the gateway with FAS's answer for a year without data"
+    assert issubclass(Gateway, data_gov.Gateway)
+    assert NoDataForYear is no_data.NoDataForYear
+
+
+def test_the_kit_s_names_are_its_module_s_alone() -> None:
+    # A snapshot script imports them from xippios.usda.fas.portal, as it imports core's frame.
+    assert portal.__all__ == ["Portal", "shell_text"]
+    for name in (*portal.__all__, "_Part", "PORTAL_URL", "SHELL_NOTE", "MAX_SHELL_BYTES"):
+        assert not hasattr(xippios.usda.fas, name), name
+
+
+def test_the_package_s_root_loads_no_script_frame() -> None:
+    # A source's runtime imports the root for its gateway; core's refresh frames are its
+    # scripts' (sdk-core ADR-0062, decision 1), so the root imports nothing of them.
+    loaded = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys, xippios.usda.fas; "
+            "print(sorted(m for m in sys.modules if m.startswith('xippios.core.refresh')))",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert loaded.strip() == "[]"
 
 
 @cache
