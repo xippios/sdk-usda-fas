@@ -44,4 +44,16 @@ adoption of a core minor raises there by hand.
 
 ## What only this package knows
 
-<!-- What only this package knows: its modules' purpose, the packages that use it, sections of its own. Fill this section or delete it. -->
+- The three FAS sources depend on it, `xippios-usda-psd`, `xippios-usda-esr` and
+  `xippios-usda-gats`, each by one minor, and adopt a breaking minor of it together. A public
+  name of the package needs two consumers among them. Its root exports the gateway's names
+  alone, `API_KEY_ENV`, `Gateway`, `NoDataForYear` and `REMAINING_HEADER`, and the kit's names,
+  `Portal` and `shell_text`, stay in `xippios.usda.fas.portal`, which a snapshot script imports,
+  so a source's runtime loads no script frame.
+- `data_gov.py` holds nothing of FAS and imports nothing of the package; FAS's own answer
+  stands in `no_data.py`. ADR-0001 holds the gateway's decisions that left xippios-core.
+- The gateway words its refusal of a 429 from the quota policy's public names alone and holds
+  its wait to the one the policy sets, and its messages name the request by core's
+  `request_description`. The test of core's public lists reads the import statements alone.
+- The kit's hooks read a document that they write with core's `read_json`, and one that they
+  only note with `parse_json`; its capture states its own check of a shell.
