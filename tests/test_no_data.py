@@ -125,6 +125,17 @@ def test_a_gateway_without_data_paths_maps_no_empty_404() -> None:
     assert Gateway("usda-gats").classify(answer(404, None, TEXT, path=YEAR_1900)) is None
 
 
+def test_no_data_for_year_built_with_a_path_alone_names_the_path() -> None:
+    # The default text, which a source that raises it without a text of its own gives.
+    error = NoDataForYear(YEAR_1900, source="usda-psd")
+    assert (error.path, error.message, error.source) == (
+        YEAR_1900,
+        f"no data for {YEAR_1900} (HTTP 404 with an empty body): the year it names holds no "
+        "data upstream",
+        "usda-psd",
+    )
+
+
 def test_no_data_for_year_takes_a_message_of_the_source_s_own() -> None:
     # A task raises it again naming commodity, country and market year.
     error = NoDataForYear(YEAR_1900, "PSD has no data for wheat, US, 1900", source="usda-psd")
