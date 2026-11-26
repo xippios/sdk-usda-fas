@@ -212,9 +212,16 @@ def test_a_document_the_kit_does_not_recognise_stops_the_run(document: object, w
     assert message.endswith("Nothing was written.")
 
 
-def test_of_several_absent_definitions_the_first_by_name_is_named() -> None:
-    # The same document stops every run with the same words.
-    document = {**DOCUMENT, "definitions": {"Code/Name~x": {"type": "string"}}}
+@pytest.mark.parametrize("reverse", [False, True], ids=["in upstream order", "reversed"])
+def test_of_several_absent_definitions_the_first_by_name_is_named(reverse: bool) -> None:
+    # The same document stops every run with the same words, whatever order its paths
+    # reference the absent definitions in (https://github.com/xippios/sdk-usda-fas/issues/9).
+    paths = list(DOCUMENT["paths"].items())
+    document = {
+        **DOCUMENT,
+        "paths": dict(reversed(paths) if reverse else paths),
+        "definitions": {"Code/Name~x": {"type": "string"}},
+    }
     with pytest.raises(SystemExit, match="#/definitions/Export Row is referenced, absent"):
         ESR._part(response(PORTAL_SWAGGER_URL, text(document)))
 
