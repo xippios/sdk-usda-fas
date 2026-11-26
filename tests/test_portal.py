@@ -213,9 +213,10 @@ def test_a_document_the_kit_does_not_recognise_stops_the_run(document: object, w
 
 
 @pytest.mark.parametrize("reverse", [False, True], ids=["in upstream order", "reversed"])
-def test_of_several_absent_definitions_the_first_by_name_is_named(reverse: bool) -> None:
-    # The same document stops every run with the same words, whatever order its paths
-    # reference the absent definitions in (https://github.com/xippios/sdk-usda-fas/issues/9).
+def test_of_several_absent_definitions_the_same_one_is_named_every_run(reverse: bool) -> None:
+    # The cut names the first absent definition that its walk meets, which takes the names in
+    # their order, so the same document stops every run with the same words, whatever order its
+    # paths reference the absent definitions in (https://github.com/xippios/sdk-usda-fas/issues/9).
     paths = list(DOCUMENT["paths"].items())
     document = {
         **DOCUMENT,
