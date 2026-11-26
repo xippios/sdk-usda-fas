@@ -1,12 +1,16 @@
 """The variables the package reads, for a host (conventions §7).
 
-The package keeps here, beside their declaration, the code that reads them, such as the auth
-of a client that it shares.
+The one variable is the key of api.data.gov's gateway, which every source behind the gateway
+reads (sdk-core ADR-0032). The code that reads it is the gateway's ``auth``, in ``data_gov.py``
+with the name of the variable, so that the gateway's module stands alone; this file declares
+the variable, and core's pytest plugin finds the package by this file and sets the placeholder
+key in it offline (sdk-core ADR-0035).
 """
 
 from xippios.core import EnvVar
 
-API_KEY_ENV = "DATA_GOV_API_KEY"  # pragma: allowlist secret (a variable name, not a key)
+from xippios.usda.fas.data_gov import API_KEY_ENV
+
 ENV_VARS: tuple[EnvVar, ...] = (EnvVar(API_KEY_ENV, secret=True, required=True),)
 """The variables the package reads, for a host (conventions §7; sdk-core ADR-0026, amendment
 2026-11-18, point c). An ``EnvVar`` names a variable and reads none; a variable the package
