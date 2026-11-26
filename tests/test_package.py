@@ -83,130 +83,38 @@ def _outside(dotted: str) -> bool:
     return module not in pinned or name not in pinned[module]
 
 
-CORE = "xippios.core"
-DYNAMIC = ("import_module", "__import__")
-"""The functions that import a module by its dotted name, ``importlib``'s and the builtin."""
+def _imports(source: str) -> list[str]:
+    """Each name or module that an import statement of ``source`` takes from core outside its
+    public lists, ``<line>: <dotted>``.
 
-
-def _in_core(dotted: str) -> bool:
-    return dotted == CORE or dotted.startswith(f"{CORE}.")
-
-
-def _dotted(node: ast.expr) -> str | None:
-    """``a.b.c`` for an attribute chain on a name, else ``None``."""
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        base = _dotted(node.value)
-        return None if base is None else f"{base}.{node.attr}"
-    return None
-
-
-def _bound(tree: ast.Module) -> dict[str, str]:
-    """Each name that an import of ``tree`` binds to a path of core, by that path.
-
-    ``import xippios.core.client as c`` binds ``c``, ``from xippios.core import client``
-    binds ``client`` and ``from xippios import core`` binds ``core``; ``import xippios.core``
-    binds ``xippios``, which a chain then spells whole.
+    It reads the import statements alone, ``import xippios.core...`` and ``from xippios.core...
+    import ...``. A private member read on an object of core, a chain of attributes and a
+    dynamic import are not its matter.
     """
-    bound: dict[str, str] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.asname and _in_core(alias.name):
-                    bound[alias.asname] = alias.name
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            for alias in node.names:
-                dotted = f"{node.module}.{alias.name}"
-                if _in_core(dotted):
-                    bound[alias.asname or alias.name] = dotted
-    return bound
-
-
-def _chain(dotted: str) -> str:
-    """The part of a chain into core that its public lists judge.
-
-    The longest public package that the chain begins with and the one name after it, or the
-    chain itself where it names no more than core.
-    """
-    parts = dotted.split(".")
-    depth = max(n for n in range(2, len(parts) + 1) if ".".join(parts[:n]) in _pinned())
-    return ".".join(parts[: depth + 1])
-
-
-def _found(tree: ast.Module) -> list[tuple[int, str]]:
-    """Each read of core in ``tree``, its line and its dotted path or private member."""
-    bound = _bound(tree)
-    found: list[tuple[int, str]] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module and _in_core(node.module):
-            found += [(node.lineno, f"{node.module}.{alias.name}") for alias in node.names]
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("xippios.core"):
+            found += [f"{node.lineno}: {node.module}.{alias.name}" for alias in node.names]
         elif isinstance(node, ast.Import):
-            found += [(node.lineno, alias.name) for alias in node.names if _in_core(alias.name)]
-        elif isinstance(node, ast.Call):
-            name = _dotted(node.func) or ""
-            first = node.args[0] if node.args else None
-            if (
-                name.rpartition(".")[2] in DYNAMIC
-                and isinstance(first, ast.Constant)
-                and isinstance(first.value, str)
-                and _in_core(first.value)
-            ):
-                found.append((node.lineno, first.value))
-        elif isinstance(node, ast.Attribute):
-            private = node.attr.startswith("_") and not node.attr.startswith("__")
-            own = isinstance(node.value, ast.Name) and node.value.id in ("self", "cls")
-            chain = _dotted(node)
-            if chain is not None:
-                head, _, rest = chain.partition(".")
-                dotted = f"{bound[head]}.{rest}" if head in bound else chain
-                if dotted.startswith(f"{CORE}."):
-                    found.append((node.lineno, _chain(dotted)))
-                    continue
-            if private and not own:
-                found.append((node.lineno, f".{node.attr}"))
-    return found
-
-
-def _violations(source: str) -> list[str]:
-    """Each read of core in ``source`` outside its public lists, ``<line>: <dotted>``.
-
-    An import of a module or a name, a chain of attributes on a name that an import of core
-    bound, and a dynamic import of a core module by its dotted name are judged by core's
-    public lists. A member that starts with one underscore, read on anything but ``self`` or
-    ``cls``, is found as such, ``.<name>``, since it reaches past an object's public names,
-    the quota policy's ``_wait_left`` say. A chain is found once, though each of its inner
-    attributes names it again.
-    """
-    lines = (
-        f"{line}: {dotted}"
-        for line, dotted in _found(ast.parse(source))
-        if dotted.startswith(".") or _outside(dotted)
-    )
-    return list(dict.fromkeys(lines))
+            found += [
+                f"{node.lineno}: {alias.name}"
+                for alias in node.names
+                if alias.name.startswith("xippios.core")
+            ]
+    return [line for line in found if _outside(line.split(": ", 1)[1])]
 
 
 @pytest.mark.parametrize(
     ("source", "found"),
     [
-        pytest.param("from xippios.core import KeyAuth, QuotaPolicy\n", [], id="the root"),
-        pytest.param("from xippios.core.testing import CLOCK_SLACK\n", [], id="a public package"),
+        pytest.param("from xippios.core import KeyAuth, QuotaPolicy\n", [], id="a public name"),
+        pytest.param("from xippios.core.testing import CLOCK_SLACK\n", [], id="a public package's"),
         pytest.param("from xippios.core import client\n", [], id="a public package by name"),
         pytest.param("import xippios.core.client\n", [], id="import of a public package"),
         pytest.param(
-            "import xippios.core.client\nxippios.core.client.QuotaPolicy\n",
-            [],
-            id="a public name by its chain",
-        ),
-        pytest.param(
-            "from xippios.core import QuotaPolicy\nQuotaPolicy.snapshot\n",
-            [],
-            id="a public method of a public name",
-        ),
-        pytest.param(
-            "class G:\n    def f(self):\n        return self._spent_for()\n",
-            [],
-            id="a private name of the class's own on self",
+            "from xippios.core.client import QuotaSnapshot\n",
+            ["1: xippios.core.client.QuotaSnapshot"],
+            id="a name outside a public package's list",
         ),
         pytest.param(
             "from xippios.core.client.quota import QuotaSnapshot\n",
@@ -216,7 +124,7 @@ def _violations(source: str) -> list[str]:
         pytest.param(
             "from xippios.core.errors import AuthError\n",
             ["1: xippios.core.errors.AuthError"],
-            id="a public name by its module",
+            id="a public name by a module below the lists",
         ),
         pytest.param(
             "import xippios.core.client.quota as q\n",
@@ -224,47 +132,28 @@ def _violations(source: str) -> list[str]:
             id="a module below the lists by its alias",
         ),
         pytest.param(
-            "from xippios import core\ncore.client.quota._TEN_YEARS\n",
-            ["2: xippios.core.client.quota"],
-            id="a chain on core imported from the namespace",
-        ),
-        pytest.param(
-            "import xippios.core\nxippios.core.client.quota._PAUSE_CAP\n",
-            ["2: xippios.core.client.quota"],
-            id="a chain on core imported whole",
-        ),
-        pytest.param(
-            "import importlib\nimportlib.import_module('xippios.core.client.quota')\n",
-            ["2: xippios.core.client.quota"],
-            id="a dynamic import of a module below the lists",
-        ),
-        pytest.param(
-            "from importlib import import_module\nimport_module('xippios.core.client.quota')\n",
-            ["2: xippios.core.client.quota"],
-            id="a dynamic import by the bare function",
-        ),
-        pytest.param(
-            "def f(policy, now):\n    return policy._wait_left(policy.snapshot(), now)\n",
-            ["2: ._wait_left"],
-            id="a private member of another object",
-        ),
-        pytest.param(
-            "class G:\n    def f(self):\n        return self.policy._clock()\n",
-            ["3: ._clock"],
-            id="a private member of an attribute of self",
+            "import xippios.core._loop\n",
+            ["1: xippios.core._loop"],
+            id="a private module",
         ),
     ],
 )
-def test_a_read_of_core_outside_its_public_lists_is_found(source: str, found: list[str]) -> None:
-    assert _violations(source) == found
+def test_an_import_outside_core_s_public_lists_is_found(source: str, found: list[str]) -> None:
+    assert _imports(source) == found
 
 
 def test_the_package_and_its_tests_import_core_by_its_public_lists_alone() -> None:
+    """Every name that an import statement of the package or its tests takes from core stands in
+    core's public lists, so the gateway imports no private name of core.
+
+    It reads the import statements alone: a private member read on an object of core, the quota
+    policy's say, is not its matter.
+    """
     found = [
         f"{path.relative_to(ROOT)}:{line}"
         for path in sorted([*(ROOT / "src").rglob("*.py"), *(ROOT / "tests").rglob("*.py")])
         if path != COLLECTS_THE_CHECK
-        for line in _violations(path.read_text(encoding="utf-8"))
+        for line in _imports(path.read_text(encoding="utf-8"))
     ]
     assert found == []
     assert COLLECTS_THE_CHECK.read_text(encoding="utf-8") == (
