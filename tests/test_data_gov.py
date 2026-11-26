@@ -183,7 +183,9 @@ def test_a_429_classified_on_its_own_waits_what_the_policy_would_set() -> None:
 
 def test_a_429_after_the_quota_is_back_waits_what_its_own_answer_says() -> None:
     # The snapshot holds a spent quota that is back already, a Retry-After of 0 observed: the
-    # gateway reads the new answer, not a wait that has run out.
+    # gateway reads the new answer, not a wait that has run out. The policy's observe alone
+    # reads it, so the 429 with a Retry-After of 0 is an input of the test, not an answer from
+    # api.data.gov.
     Gateway.policy.observe(answer(429, OVER_RATE_LIMIT, {**RECORDED_429, "retry-after": "0"}))
     spent = Gateway.policy.snapshot()
     assert spent is not None
