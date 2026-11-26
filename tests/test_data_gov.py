@@ -197,7 +197,9 @@ def test_a_429_after_the_quota_is_back_waits_what_its_own_answer_says() -> None:
 
 def test_a_429_after_another_answer_replaced_the_snapshot_waits_what_its_own_answer_says() -> None:
     # The last answer observed left requests: the snapshot names no wait, so the gateway reads
-    # the new answer, and names no allowance that the snapshot alone would give.
+    # the new answer, and names no allowance that the snapshot alone would give. The policy's
+    # observe alone reads it, so the empty list at HTTP 200 with the quota headers is an input
+    # of the test, not an answer from api.data.gov.
     Gateway.policy.observe(answer(200, [], QUOTA))
     snapshot = Gateway.policy.snapshot()
     assert snapshot is not None
@@ -360,6 +362,8 @@ def test_every_other_answer_is_left_to_the_source(status: int, body: object) -> 
 @pytest.mark.rate_limited
 async def test_two_sources_draw_on_one_quota() -> None:
     psd = client_for(Gateway("usda-psd"), Upstream(429, OVER_RATE_LIMIT, RECORDED_429))
+    # NOT RECORDED: an empty list at 200 with the quota headers, in the shapes that FAS's
+    # services were recorded answering behind the gateway (conventions §10, kind 2).
     esr_upstream = Upstream(200, [], QUOTA)
     esr = client_for(Gateway("usda-esr"), esr_upstream)
     with pytest.raises(RateLimitError):
@@ -437,12 +441,16 @@ def test_a_publisher_s_answers_come_after_the_gateway_s_own() -> None:
     assert isinstance(not_found, NotFoundError)
     assert not_found.message.startswith("api.data.gov has no route")
     assert asked == [], "the gateway's own answers are never the publisher's"
+    # NOT RECORDED: an empty 404, in the shape that FAS's services were recorded answering
+    # (conventions §10, kind 2).
     error = gateway.classify(answer(404, None))
     assert isinstance(error, NotFoundError)
     assert error.message == "the publisher's empty 404"
     # NOT RECORDED: a 403 in no shape that the gateway sends, which it leaves to the publisher
     # (conventions §10, kind 5).
     assert gateway.classify(answer(403, {"Message": "Access denied"})) is None
+    # NOT RECORDED: an empty list at 200, in the shape that FAS's services were recorded
+    # answering (conventions §10, kind 2).
     assert gateway.classify(answer(200, [])) is None
     assert asked == [404, 403, 200], "every answer the gateway leaves, once"
 
@@ -496,6 +504,9 @@ def test_every_documented_key_code_is_an_auth_error(code: str, status: int) -> N
 @pytest.mark.parametrize("status", [401, 403])
 @pytest.mark.parametrize("code", ["OVER_RATE_LIMIT", "NOT_FOUND"])
 def test_a_gateway_code_that_names_no_key_is_left_to_the_source(status: int, code: str) -> None:
+    """NOT RECORDED: the gateway's error body with a code that names no key at 401 or 403,
+    where api.data.gov documents its key codes alone, a form that it is not documented to
+    send, to show that the gateway leaves it to the source (conventions §10, kind 5)."""
     body = {"error": {"code": code, "message": "not a key's"}}
     assert Gateway("usda-gats").classify(answer(status, body)) is None
 
