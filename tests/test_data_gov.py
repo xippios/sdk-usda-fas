@@ -299,6 +299,30 @@ def test_each_message_of_a_response_built_without_a_request_names_the_request() 
     assert "has no route for the request (HTTP 404 " in missing.message
 
 
+@pytest.mark.parametrize(
+    ("status", "code"), [(401, "API_KEY_MISSING"), (403, "API_KEY_DISABLED"), (404, "NOT_FOUND")]
+)
+def test_a_code_with_an_empty_message_is_quoted_alone(status: int, code: str) -> None:
+    """NOT RECORDED: the gateway's documented body with its code and an empty message
+    (conventions §10, kind 2), https://github.com/xippios/sdk-usda-fas/issues/7."""
+    error = Gateway("usda-esr").classify(answer(status, {"error": {"code": code, "message": ""}}))
+    assert error is not None
+    assert f"(HTTP {status} {code})" in error.message
+    assert f"{code}:" not in error.message, "no colon before an empty message"
+
+
+@pytest.mark.parametrize(
+    ("status", "code"), [(401, "API_KEY_MISSING"), (403, "API_KEY_DISABLED"), (404, "NOT_FOUND")]
+)
+def test_a_code_with_its_message_is_quoted_with_it_after_the_colon(status: int, code: str) -> None:
+    """NOT RECORDED: the gateway's documented body with its code and its message (conventions
+    §10, kind 2), https://github.com/xippios/sdk-usda-fas/issues/7."""
+    body = {"error": {"code": code, "message": "as documented"}}
+    error = Gateway("usda-esr").classify(answer(status, body))
+    assert error is not None
+    assert f"(HTTP {status} {code}: as documented)" in error.message
+
+
 def test_a_code_without_a_message_is_worded_without_an_empty_one() -> None:
     """NOT RECORDED: the gateway's documented bodies with no ``message`` (conventions §10,
     kind 2)."""
