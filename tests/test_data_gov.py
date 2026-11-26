@@ -43,7 +43,7 @@ INVALID_KEY = {
     }
 }
 """NOT RECORDED here: api.data.gov's 403 body, composed in the shape sdk-usda-psd recorded
-behind the gateway on 2026-10-23, its ``tests/fixtures/PSDData_GetCommodities/invalid_key.json``
+behind the gateway on 2026-10-23, its ``tests/fixtures/get_commodities/invalid_key.json``
 (conventions §10, kind 2)."""
 OVER_RATE_LIMIT = {
     "error": {
@@ -65,8 +65,9 @@ GATEWAY_NOT_FOUND = {"error": {"code": "NOT_FOUND", "message": "The requested UR
 def answer(
     status: int, body: object, headers: dict[str, str] | None = None, path: str = "/api/psd/x"
 ) -> httpx.Response:
-    """NOT RECORDED: an answer to ``GET <path>`` in the shape api.data.gov sends, composed from
-    the bodies above; ``body=None`` is an empty body (conventions §10, kind 2)."""
+    """NOT RECORDED: an answer to ``GET <path>`` with the body given; ``body=None`` is an empty
+    body. The bodies above are composed in the shapes api.data.gov sends (conventions §10,
+    kind 2), and a test that passes another marks it where it builds it."""
     content = b"" if body is None else json.dumps(body).encode()
     return httpx.Response(
         status, content=content, headers=headers or {}, request=httpx.Request("GET", BASE + path)
@@ -349,6 +350,9 @@ def test_a_code_without_a_message_is_worded_without_an_empty_one() -> None:
     ],
 )
 def test_every_other_answer_is_left_to_the_source(status: int, body: object) -> None:
+    """NOT RECORDED: a ``{"Message": ...}`` 403 and 500, in no shape that the gateway sends, to
+    show that it leaves them to the source (conventions §10, kind 5), and an empty 404 and an
+    empty list, in the shapes that FAS's services were recorded answering (kind 2)."""
     assert Gateway("usda-psd").classify(answer(status, body)) is None
 
 
@@ -436,6 +440,8 @@ def test_a_publisher_s_answers_come_after_the_gateway_s_own() -> None:
     error = gateway.classify(answer(404, None))
     assert isinstance(error, NotFoundError)
     assert error.message == "the publisher's empty 404"
+    # NOT RECORDED: a 403 in no shape that the gateway sends, which it leaves to the publisher
+    # (conventions §10, kind 5).
     assert gateway.classify(answer(403, {"Message": "Access denied"})) is None
     assert gateway.classify(answer(200, [])) is None
     assert asked == [404, 403, 200], "every answer the gateway leaves, once"
