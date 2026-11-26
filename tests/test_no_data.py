@@ -67,14 +67,30 @@ def test_an_empty_text_404_on_a_data_path_says_the_year_holds_no_data() -> None:
     assert error.path == YEAR_1900
     assert error.source == "usda-psd"
     assert error.message == (
-        f"no data for {YEAR_1900} (HTTP 404 with an empty body): the year it names holds no "
-        "data upstream"
-    )
+        f"no data for GET {YEAR_1900} (HTTP 404 with an empty body): the year it names holds "
+        "no data upstream"
+    ), "the request by core's request_description, as the gateway's other messages name it"
     assert HOST not in error.message
     path = "/api/esr/exports/commodityCode/104/allCountries/marketYear/1900"
     esr = Gateway("usda-esr", data_path=ESR_DATA)
     upper = {"Content-Type": "TEXT/PLAIN; charset=utf-8"}  # media types ignore case (RFC 9110)
     assert isinstance(esr.classify(answer(404, None, upper, path=path)), NoDataForYear)
+
+
+def test_the_gateway_s_four_messages_name_one_request_alike() -> None:
+    """NOT RECORDED: the gateway's three documented answers and FAS's empty 404, each to the
+    same request on a data path (conventions §10, kind 2)."""
+    gateway = Gateway("usda-psd", data_path=PSD_DATA)
+    answers = (
+        answer(403, INVALID_KEY, path=YEAR_1900),
+        answer(429, OVER_RATE_LIMIT, {"retry-after": "60"}, path=YEAR_1900),
+        answer(404, GATEWAY_NOT_FOUND, path=YEAR_1900),
+        answer(404, None, TEXT, path=YEAR_1900),
+    )
+    for response in answers:
+        error = gateway.classify(response)
+        assert error is not None
+        assert f" GET {YEAR_1900} " in error.message, error.message
 
 
 @pytest.mark.parametrize(
@@ -107,6 +123,17 @@ def test_the_gateway_s_own_answers_come_before_fas_s() -> None:
 def test_a_gateway_without_data_paths_maps_no_empty_404() -> None:
     # sdk-usda-gats: its data paths answer [], never the empty 404.
     assert Gateway("usda-gats").classify(answer(404, None, TEXT, path=YEAR_1900)) is None
+
+
+def test_no_data_for_year_built_with_a_path_alone_names_the_path() -> None:
+    # The default text, which a source that raises it without a text of its own gives.
+    error = NoDataForYear(YEAR_1900, source="usda-psd")
+    assert (error.path, error.message, error.source) == (
+        YEAR_1900,
+        f"no data for {YEAR_1900} (HTTP 404 with an empty body): the year it names holds no "
+        "data upstream",
+        "usda-psd",
+    )
 
 
 def test_no_data_for_year_takes_a_message_of_the_source_s_own() -> None:

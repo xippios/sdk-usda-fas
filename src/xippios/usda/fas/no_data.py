@@ -18,7 +18,7 @@ the empty 404, so sdk-usda-gats gives none.
 import re
 
 import httpx
-from xippios.core import NotFoundError, XippiosError
+from xippios.core import NotFoundError, XippiosError, request_description
 
 from xippios.usda.fas import data_gov
 
@@ -39,7 +39,8 @@ class NoDataForYear(NotFoundError):
     Args:
         path: The request path, e.g. ``"/api/psd/commodity/0410000/country/US/year/1900"``.
         message: The text; by default it names the path and says that the year it names
-            holds no data.
+            holds no data. The gateway gives it the request in place of the path, its method
+            and path by core's ``request_description``, as its other messages name it.
         source: The source slug, e.g. ``"usda-psd"``.
 
     Attributes:
@@ -47,13 +48,16 @@ class NoDataForYear(NotFoundError):
     """
 
     def __init__(self, path: str, message: str | None = None, *, source: str | None = None) -> None:
-        super().__init__(
-            message
-            or f"no data for {path} (HTTP 404 with an empty body): the year it names holds no "
-            "data upstream",
-            source=source,
-        )
+        super().__init__(message or _no_data(path), source=source)
         self.path = path
+
+
+def _no_data(asked: str) -> str:
+    """The text of ``NoDataForYear`` for what was asked, a request or a path."""
+    return (
+        f"no data for {asked} (HTTP 404 with an empty body): the year it names holds no data "
+        "upstream"
+    )
 
 
 def _path(response: httpx.Response) -> str | None:
@@ -102,4 +106,4 @@ class Gateway(data_gov.Gateway):
         path = _path(response)
         if path is None or not self.data_path.fullmatch(path):
             return None
-        return NoDataForYear(path, source=self.source)
+        return NoDataForYear(path, _no_data(request_description(response)), source=self.source)
