@@ -22,6 +22,14 @@ says what it holds and never holds.
   source's `scripts/refresh_upstream.py` declares its documentation snapshot on core's frame:
   `Portal(prefix)` for the source's service and `shell_text` for a shell page of its own.
 
+## Install
+
+```bash
+uv add xippios-usda-fas
+```
+
+## 30-second example
+
 A source imports the gateway's names from the package and the kit from its module:
 
 ```python
@@ -36,12 +44,6 @@ PORTAL = Portal("/api/esr/")
 
 Importing the package loads none of core's script frames. A source depends on it by
 `xippios-usda-fas~=0.1.0`, one minor.
-
-## Install
-
-```bash
-uv add xippios-usda-fas
-```
 
 ## Workflows
 
