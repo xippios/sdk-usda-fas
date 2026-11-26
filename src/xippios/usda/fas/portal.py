@@ -330,7 +330,10 @@ class Portal:
         wanted: set[str] = set()
         pending = _refs(kept)
         while pending:
-            name = min(pending)  # in name order, so a run names the same absent one each time
+            # The least pending name first: the walk meets, and a refusal names, the same absent
+            # definition on every run, not always the least name absent
+            # (https://github.com/xippios/sdk-usda-fas/issues/9).
+            name = min(pending)
             pending.remove(name)
             if name in wanted:
                 continue
