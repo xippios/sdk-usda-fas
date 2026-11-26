@@ -24,7 +24,7 @@ The FAS sources build the package's exported ``Gateway`` in its place, this gate
 answer for a year without data as its ``answers`` (``no_data``).
 
 What the gateway sends, as a source behind it recorded it on 2026-10-23 (sdk-usda-psd's
-``tests/fixtures/PSDData_GetCommodities/``):
+``tests/fixtures/get_commodities/``):
 
 - Every answer to a valid key carries ``x-ratelimit-limit: 1000`` and
   ``x-ratelimit-remaining``, the requests left in the key's rolling hour; no reset
