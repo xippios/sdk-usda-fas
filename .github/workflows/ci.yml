@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: The changelog has an entry
+        if: >-
+          github.event_name == 'pull_request'
+          && !startsWith(github.head_ref, 'dependabot/')
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          fragment='changelog/(added|changed|fixed|removed|security|breaking)-[a-z0-9]+(-[a-z0-9]+)*\.md'
+          if ! git diff --name-only --diff-filter=d "origin/${BASE}...HEAD" \
+            | grep -qE "^(CHANGELOG\.md|${fragment})\$"; then
+            echo "::error::no changelog entry: add changelog/<group>-<slug>.md as changelog/README.md says, or a line under Unreleased in CHANGELOG.md (conventions §12)"
+            exit 1
+          fi
+      - name: Fixture files under 256 KiB
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          over=0
+          while IFS= read -r -d '' path; do
+            size="$(stat -c %s "$path")"
+            if [ "$size" -ge 262144 ]; then
+              echo "::error file=${path}::${size} bytes, over the 256 KiB cap (sdk-core ADR-0040)"
+              over=1
+            fi
+          done < <(git diff -z --name-only --find-renames=100% --diff-filter=AM "origin/${BASE}...HEAD" -- tests/fixtures/)
+          exit "$over"
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - run: uv sync --all-extras --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+      - name: Cache pre-commit hook environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-py${{ matrix.python }}-${{ hashFiles('.pre-commit-config.yaml') }}
+      - run: uv run pre-commit run --all-files
+
+  ci:
+    name: ci
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the whole matrix to pass
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "test matrix result: ${{ needs.test.result }}"
+            exit 1
+          fi
