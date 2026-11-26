@@ -83,19 +83,107 @@ def _outside(dotted: str) -> bool:
     return module not in pinned or name not in pinned[module]
 
 
-def _violations(source: str) -> list[str]:
-    """Each read of core in ``source`` outside its public lists, ``<line>: <dotted>``."""
-    found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("xippios.core"):
-            found += [f"{node.lineno}: {node.module}.{alias.name}" for alias in node.names]
+CORE = "xippios.core"
+DYNAMIC = ("import_module", "__import__")
+"""The functions that import a module by its dotted name, ``importlib``'s and the builtin."""
+
+
+def _in_core(dotted: str) -> bool:
+    return dotted == CORE or dotted.startswith(f"{CORE}.")
+
+
+def _dotted(node: ast.expr) -> str | None:
+    """``a.b.c`` for an attribute chain on a name, else ``None``."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _dotted(node.value)
+        return None if base is None else f"{base}.{node.attr}"
+    return None
+
+
+def _bound(tree: ast.Module) -> dict[str, str]:
+    """Each name that an import of ``tree`` binds to a path of core, by that path.
+
+    ``import xippios.core.client as c`` binds ``c``, ``from xippios.core import client``
+    binds ``client`` and ``from xippios import core`` binds ``core``; ``import xippios.core``
+    binds ``xippios``, which a chain then spells whole.
+    """
+    bound: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname and _in_core(alias.name):
+                    bound[alias.asname] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                dotted = f"{node.module}.{alias.name}"
+                if _in_core(dotted):
+                    bound[alias.asname or alias.name] = dotted
+    return bound
+
+
+def _chain(dotted: str) -> str:
+    """The part of a chain into core that its public lists judge.
+
+    The longest public package that the chain begins with and the one name after it, or the
+    chain itself where it names no more than core.
+    """
+    parts = dotted.split(".")
+    depth = max(n for n in range(2, len(parts) + 1) if ".".join(parts[:n]) in _pinned())
+    return ".".join(parts[: depth + 1])
+
+
+def _found(tree: ast.Module) -> list[tuple[int, str]]:
+    """Each read of core in ``tree``, its line and its dotted path or private member."""
+    bound = _bound(tree)
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and _in_core(node.module):
+            found += [(node.lineno, f"{node.module}.{alias.name}") for alias in node.names]
         elif isinstance(node, ast.Import):
-            found += [
-                f"{node.lineno}: {alias.name}"
-                for alias in node.names
-                if alias.name.startswith("xippios.core")
-            ]
-    return [line for line in found if _outside(line.split(": ", 1)[1])]
+            found += [(node.lineno, alias.name) for alias in node.names if _in_core(alias.name)]
+        elif isinstance(node, ast.Call):
+            name = _dotted(node.func) or ""
+            first = node.args[0] if node.args else None
+            if (
+                name.rpartition(".")[2] in DYNAMIC
+                and isinstance(first, ast.Constant)
+                and isinstance(first.value, str)
+                and _in_core(first.value)
+            ):
+                found.append((node.lineno, first.value))
+        elif isinstance(node, ast.Attribute):
+            private = node.attr.startswith("_") and not node.attr.startswith("__")
+            own = isinstance(node.value, ast.Name) and node.value.id in ("self", "cls")
+            chain = _dotted(node)
+            if chain is not None:
+                head, _, rest = chain.partition(".")
+                dotted = f"{bound[head]}.{rest}" if head in bound else chain
+                if dotted.startswith(f"{CORE}."):
+                    found.append((node.lineno, _chain(dotted)))
+                    continue
+            if private and not own:
+                found.append((node.lineno, f".{node.attr}"))
+    return found
+
+
+def _violations(source: str) -> list[str]:
+    """Each read of core in ``source`` outside its public lists, ``<line>: <dotted>``.
+
+    An import of a module or a name, a chain of attributes on a name that an import of core
+    bound, and a dynamic import of a core module by its dotted name are judged by core's
+    public lists. A member that starts with one underscore, read on anything but ``self`` or
+    ``cls``, is found as such, ``.<name>``, since it reaches past an object's public names,
+    the quota policy's ``_wait_left`` say. A chain is found once, though each of its inner
+    attributes names it again.
+    """
+    lines = (
+        f"{line}: {dotted}"
+        for line, dotted in _found(ast.parse(source))
+        if dotted.startswith(".") or _outside(dotted)
+    )
+    return list(dict.fromkeys(lines))
 
 
 @pytest.mark.parametrize(
